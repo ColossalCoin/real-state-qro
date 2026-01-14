@@ -3,7 +3,7 @@
   <component name="Black">
     <option name="sdkName" value="Hedonismo" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Hedonismo" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="real_estate_ds" project-jdk-type="Python SDK" />
   <component name="PyCharmDSProjectLayout">
     <option name="id" value="JupyterRightHiddenStructureLayout" />
   </component>
