@@ -1,83 +1,66 @@
 import pandas as pd
-import re
 import os
+import sys
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 from tqdm import tqdm
 
+# Add project root to path to ensure imports work if run as script
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+
+# IMPORTING THE CLEANER CLASS
+from src.utils.clean_text import AddressCleaner
+
 # --- CONFIGURATION ---
-INPUT_FILE = 'data/raw/real_estate_queretaro_dataset.csv'
+INPUT_FILE = 'data/raw/real_estate_data.csv'
 OUTPUT_FILE = 'data/processed/geocoded_data.csv'
-CACHE_FILE = 'data/processed/geocoding_cache.csv'  # Temporary storage for unique locations
-USER_AGENT = "portfolio_project_qro_analysis_v3_optimized"
+CACHE_FILE = 'data/processed/geocoding_cache.csv'  # Dimension Table (Unique Locations)
+USER_AGENT = "portfolio_project_qro_analysis_v4_modular"
 SAVE_BATCH_SIZE = 10
 
 
-class AddressCleaner:
-    """
-    Service class for normalizing real estate address strings.
-    """
-    NOISE_PATTERNS = [
-        r"venta de casa en", r"casa en venta", r"en venta",
-        r"venta", r"preventa", r"remate", r"oportunidad",
-        r"fraccionamiento", r"residencial", r"condominio",
-        r"lotes?", r"terrenos?", r"departamentos?", r"casas?"
-    ]
-
-    @staticmethod
-    def clean(raw_address: str) -> str:
-        if not isinstance(raw_address, str) or len(raw_address) < 3:
-            return ""
-        cleaned = raw_address.lower()
-        for pattern in AddressCleaner.NOISE_PATTERNS:
-            cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
-        cleaned = re.sub(r'\b(quer[ée]taro|m[ée]xico|qro)\b', '', cleaned)
-        cleaned = re.sub(r'\b(.+?)(?:[\s,]+)\1\b', r'\1', cleaned)
-        cleaned = re.sub(r'^\s*(?:en|de)\b\s*', '', cleaned)
-        cleaned = re.sub(r'[^a-z0-9\s,áéíóúñ]', '', cleaned)
-        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-        cleaned = re.sub(r'^,+,*|,*,$', '', cleaned)
-        return cleaned
-
-
 def load_cache(cache_path):
-    """Loads existing unique geocoded addresses."""
+    """Loads existing unique geocoded addresses (Dimension Table)."""
     if os.path.exists(cache_path):
         return pd.read_csv(cache_path)
-    return pd.DataFrame(columns=['clean_address', 'latitude', 'longitude'])
+    return pd.DataFrame(columns=['clean_address', 'latitude', 'longitude', 'precision'])
 
 
-def process_geocoding_optimized(input_path, output_path, cache_path):
-    print(f"--- STARTING OPTIMIZED GEOCODER (UNIQUE STRATEGY) ---")
+def process_geocoding(input_path, output_path, cache_path):
+    print(f"--- STARTING MODULAR GEOCODER (FALLBACK STRATEGY ENABLED) ---")
 
-    # 1. Load and Clean Data
+    # 1. LOAD AND CLEAN
     print(f"Loading data from {input_path}...")
-    df = pd.read_csv(input_path)
+    try:
+        df = pd.read_csv(input_path)
+    except FileNotFoundError:
+        print(f"Error: File not found at {input_path}")
+        return
 
-    # Auto-detect column
+    # Auto-detect location column
     target_col = 'location'
     if target_col not in df.columns:
         candidates = [c for c in df.columns if 'location' in c or 'address' in c]
         if candidates: target_col = candidates[0]
 
-    print("Cleaning addresses...")
+    print("Step 1: Cleaning addresses using 'src.utils.clean_text'...")
+    # Using the imported class
     df['clean_address'] = df[target_col].apply(AddressCleaner.clean)
 
-    # Filter valid
+    # Filter valid rows (>3 chars)
     df_valid = df[df['clean_address'].str.len() > 3].copy()
 
-    # 2. Identify UNIQUES
-    # This is the optimization step: Get only unique strings
+    # 2. OPTIMIZATION: IDENTIFY UNIQUES
     unique_addresses = df_valid['clean_address'].unique()
     print(f"Total rows: {len(df_valid)}")
     print(f"Unique locations to geocode: {len(unique_addresses)}")
     print(f"Optimization Factor: {len(df_valid) / len(unique_addresses):.2f}x faster")
 
-    # 3. Load Cache (Resume Logic)
+    # 3. LOAD CACHE (RESUME LOGIC)
     df_cache = load_cache(cache_path)
     cached_addresses = set(df_cache['clean_address'].tolist())
 
-    # Identify which uniques are NOT in cache
+    # Identify pending uniques
     pending_addresses = [addr for addr in unique_addresses if addr not in cached_addresses]
 
     if len(pending_addresses) == 0:
@@ -85,32 +68,53 @@ def process_geocoding_optimized(input_path, output_path, cache_path):
     else:
         print(f"Addresses pending geocoding: {len(pending_addresses)}")
 
-        # 4. Geocoding Loop (Only for pending uniques)
+        # 4. GEOCODING LOOP
+        print("Step 2: Querying API (with Fallback Strategy for robustness)...")
+
+        # Increase timeout to 10s to prevent ReadTimeoutError
         geolocator = Nominatim(user_agent=USER_AGENT, timeout=10)
         geocode_service = RateLimiter(geolocator.geocode, min_delay_seconds=1.1)
 
         temp_results = []
 
-        print("Geocoding unique locations...")
-        for address in tqdm(pending_addresses):
+        for address in tqdm(pending_addresses, desc="Geocoding"):
             result = {
                 'clean_address': address,
                 'latitude': None,
-                'longitude': None
+                'longitude': None,
+                'precision': 'exact'  # Metadata for quality control
             }
 
             try:
+                # ATTEMPT 1: Exact Match
+                # e.g. "Zikura, Zibatá, El Marqués, Querétaro, México"
                 query = f"{address}, Querétaro, México"
                 location = geocode_service(query)
+
+                # ATTEMPT 2: Fallback Strategy (If exact match fails)
+                # If "Cluster, Neighborhood" fails, try just "Neighborhood"
+                if location is None and ',' in address:
+                    parts = address.split(',')
+                    # Remove the first part (most specific) and join the rest
+                    broader_address = ",".join(parts[1:]).strip()
+
+                    if len(broader_address) > 3:
+                        query_retry = f"{broader_address}, Querétaro, México"
+                        location = geocode_service(query_retry)
+                        if location:
+                            result['precision'] = 'approximate'  # Flag as broader area
+
                 if location:
                     result['latitude'] = location.latitude
                     result['longitude'] = location.longitude
-            except Exception:
-                pass  # Skip on error
+
+            except Exception as e:
+                # Log error silently to continue processing
+                pass
 
             temp_results.append(result)
 
-            # Incremental Save to Cache
+            # Incremental Save
             if len(temp_results) >= SAVE_BATCH_SIZE:
                 batch_df = pd.DataFrame(temp_results)
                 header = not os.path.exists(cache_path)
@@ -121,26 +125,34 @@ def process_geocoding_optimized(input_path, output_path, cache_path):
         if temp_results:
             pd.DataFrame(temp_results).to_csv(cache_path, mode='a', header=False, index=False)
 
-    # 5. MERGE AND SAVE FINAL OUTPUT
-    print("Merging coordinates back to original dataset...")
+    # 5. DATA MODELING EXPORT (BIGQUERY READY)
+    print("\nStep 3: Generating Star Schema Files...")
 
-    # Reload full cache to ensure we have everything
-    final_cache = pd.read_csv(cache_path)
+    # A) Fact Table: Listings with Foreign Key (clean_address)
+    fact_table_path = output_path.replace('.csv', '_fact_listings.csv')
+    # Save original columns + clean_address
+    df_valid.to_csv(fact_table_path, index=False)
 
-    # Merge: SQL Left Join concept
-    # We take original valid DF and attach coords based on 'clean_address'
-    df_final = df_valid.merge(final_cache, on='clean_address', how='left')
+    # B) Dimension Table: Geography (Unique Locations)
+    # Reload full cache to ensure completeness
+    final_dim_table = pd.read_csv(cache_path)
 
-    # Save final result
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    # C) Flat Table (Optional, for local analysis/debugging)
+    print("Merging for local flat file...")
+    df_final = df_valid.merge(final_dim_table, on='clean_address', how='left')
     df_final.to_csv(output_path, index=False)
 
-    hit_rate = df_final['latitude'].notnull().mean() * 100
+    hit_rate = final_dim_table['latitude'].notnull().mean() * 100
+
     print(f"\n--- SUCCESS ---")
-    print(f"Final dataset saved to: {output_path}")
-    print(f"Total Rows: {len(df_final)}")
-    print(f"Geocoding Hit Rate: {hit_rate:.2f}%")
+    print(f"1. [Fact Table]  Listings:   {fact_table_path}")
+    print(f"2. [Dim Table]   Geography:  {cache_path}")
+    print(f"3. [Flat Table]  Combined:   {output_path}")
+    print(f"Geocoding Success Rate (on unique locations): {hit_rate:.2f}%")
 
 
 if __name__ == "__main__":
-    process_geocoding_optimized(INPUT_FILE, OUTPUT_FILE, CACHE_FILE)
+    # Ensure output directory exists
+    os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
+
+    process_geocoding(INPUT_FILE, OUTPUT_FILE, CACHE_FILE)
