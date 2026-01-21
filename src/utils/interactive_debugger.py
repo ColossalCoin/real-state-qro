@@ -3,7 +3,6 @@ from playwright.async_api import async_playwright
 import os
 import sys
 
-# --- CONFIGURATION ---
 CHROME_PATH = r"C:\chrome-win64\chrome.exe"
 # Specific URL to ensure elements are present for inspection
 TARGET_URL = "https://www.vivanuncios.com.mx/s-casas-en-venta/queretaro/v1c1293l1021p1"
@@ -23,7 +22,6 @@ async def launch_interactive_inspector():
     6. Press 'Resume' in the Inspector to close the session.
     """
 
-    # 1. Environment Validation
     if not os.path.exists(CHROME_PATH):
         print(f"[ERROR] Chrome binary not found at: {CHROME_PATH}")
         sys.exit(1)
@@ -60,7 +58,6 @@ async def launch_interactive_inspector():
             print("4. Press the 'Resume' (Play icon) in the Inspector to exit.")
             print("=" * 60 + "\n")
 
-            # --- THE MAGIC LINE ---
             # This halts execution and hands control to the Playwright Inspector GUI
             await page.pause()
 

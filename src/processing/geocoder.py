@@ -16,7 +16,6 @@ try:
 except ImportError:
     from clean_text import AddressCleaner
 
-# Configuración de Logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -30,10 +29,10 @@ class GeocoderService:
     """
 
     def __init__(self, app_name="qro_real_estate_analyzer_v1"):
-        # 1. Setup Client: Nominatim requires a unique user_agent
+        # Setup Client: Nominatim requires a unique user_agent
         self.geolocator = Nominatim(user_agent=app_name, timeout=10)
 
-        # 2. Setup Rate Limiter: Crucial to prevent 429 Errors (Too Many Requests)
+        # Setup Rate Limiter: Crucial to prevent 400 Errors (Too Many Requests)
         # Nominatim asks for 1 second delay minimum.
         self.geocode_api = RateLimiter(self.geolocator.geocode, min_delay_seconds=1.1)
 
@@ -92,7 +91,7 @@ class GeocoderService:
 
         df_out = df.copy()
 
-        # Usamos un bucle simple para ver el progreso real en la consola
+        # Show real-time progress on the console
         lats, lons = [], []
         total = len(df_out)
 
@@ -102,12 +101,12 @@ class GeocoderService:
             lats.append(lat)
             lons.append(lon)
 
-            # Barra de progreso simple
+            # Progress bar
             if i % 5 == 0 or i == total - 1:
                 sys.stdout.write(f"\rProcessing: {i + 1}/{total} - Last: {addr[:20]}...")
                 sys.stdout.flush()
 
-        print("\n")  # Nueva línea al terminar
+        print("\n")
         df_out['latitude'] = lats
         df_out['longitude'] = lons
 
@@ -117,7 +116,6 @@ class GeocoderService:
         return df_out
 
 
-# --- ENTRY POINT (EJECUCIÓN) ---
 if __name__ == "__main__":
     INPUT_FILE = BASE_DIR / "data" / "raw" / "real_estate_queretaro_dataset.csv"
     OUTPUT_FILE = BASE_DIR / "data" / "processed" / "geo_catalog.csv"

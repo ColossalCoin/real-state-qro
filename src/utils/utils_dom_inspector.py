@@ -3,7 +3,6 @@ from playwright.async_api import async_playwright
 import os
 import sys
 
-# --- CONFIGURATION ---
 CHROME_PATH = r"C:\chrome-win64\chrome.exe"
 # Using a specific search query to ensure results are populated
 TARGET_URL = "https://www.vivanuncios.com.mx/s-casas-en-venta/queretaro/v1c1293l1021p1"
@@ -16,7 +15,6 @@ async def inspect_listing_structure():
     without executing a full scrape cycle.
     """
 
-    # 1. Environment Validation
     if not os.path.exists(CHROME_PATH):
         print(f"[ERROR] Chrome executable not found at: {CHROME_PATH}")
         sys.exit(1)

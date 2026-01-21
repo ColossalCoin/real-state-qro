@@ -6,7 +6,6 @@ import pandas as pd
 from datetime import datetime
 from playwright.async_api import async_playwright
 
-# --- CONFIGURATION CONSTANTS ---
 # Update this path if your Chrome installation is different
 CHROME_PATH = r"C:/chrome-win64/chrome.exe"
 BASE_URL_ROOT = "https://www.vivanuncios.com.mx/s-casas-en-venta/queretaro/"
@@ -95,7 +94,7 @@ class RealEstateScraper:
             title = await self.page.title()
             html_content = await self.page.content()
 
-            # 2. Price Extraction (Waterfall Strategy)
+            # 2. Price Extraction
             final_price = None
 
             def is_valid_price(val):
@@ -302,9 +301,7 @@ class RealEstateScraper:
             print(f"\n[FINISH] Process completed. Saved to {os.path.join(OUTPUT_DIR, OUTPUT_FILENAME)}")
 
 
-# --- ENTRY POINT ---
 if __name__ == "__main__":
-    # Settings for Full Run
     print("--- Starting Real Estate Scraper Engine (Production v2) ---")
     scraper = RealEstateScraper(headless=True, max_pages=400)
     asyncio.run(scraper.run())
