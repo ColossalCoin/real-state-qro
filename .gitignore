@@ -179,3 +179,7 @@ pyrightconfig.json
 data/raw/*
 data/processed/*
 data/external/*
+
+# Do not ignore:
+data/*
+!data/**/.gitkeep
