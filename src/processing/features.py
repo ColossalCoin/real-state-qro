@@ -1,16 +1,30 @@
 """
 Description:
-    Parses unstructured text descriptions from real estate listings to extract
-    structured binary features (Amenities) using Regular Expressions (NLP).
+    Feature Engineering Module.
 
-    This module is part of the ETL pipeline, bridging the gap between raw web-scraped
-    data and the Machine Learning model.
+    Responsibilities:
+    1. Structural Linking: Generates a 'clean_address' Foreign Key for BigQuery Joins.
+    2. NLP Extraction: Parses unstructured text descriptions to create binary
+       amenity features (0/1) using Regular Expressions.
+
+    Note: Input data is expected to have 'price_numeric' already pre-processed.
 """
 
 import pandas as pd
 import logging
+import sys
 import os
 from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(BASE_DIR))
+
+# Import the AddressCleaner helper
+try:
+    from src.utils.clean_text import AddressCleaner
+except ImportError:
+    sys.path.append(str(BASE_DIR / "src" / "utils"))
+    from clean_text import AddressCleaner
 
 # Configure Logging
 logging.basicConfig(
@@ -22,12 +36,16 @@ logger = logging.getLogger(__name__)
 
 class FeatureExtractor:
     """
-    Extracts binary amenities (0/1) from text descriptions.
+    Central class for enriching real estate data.
+    Focuses on creating Foreign Keys and extracting NLP features.
     """
 
-    def __init__(self):
-        # Define Regex Patterns (Case Insensitive)
-        # Note: We use Spanish keywords because the raw data is in Spanish.
+    def __init__(self, text_col='description', location_col='location_text'):
+        # Configuration for column names
+        self.text_col = text_col
+        self.location_col = location_col
+
+        # Define Regex Patterns for Amenities (Case Insensitive)
         self.amenity_patterns = {
             'has_security': [
                 r'vigilancia', r'seguridad', r'cctv', r'control de acceso',
@@ -59,93 +77,79 @@ class FeatureExtractor:
         }
 
     def _normalize_text(self, series: pd.Series) -> pd.Series:
-        """
-        Normalizes text: lowercase, fills NA, removes special chars if needed.
-        """
+        """Helper: Normalizes text for NLP tasks."""
         return series.fillna("").astype(str).str.lower()
 
-    def transform(self, df: pd.DataFrame, text_col: str = 'description') -> pd.DataFrame:
+    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Main method to apply transformations.
-
-        Args:
-            df (pd.DataFrame): Raw dataframe containing the text column.
-            text_col (str): The name of the column to parse.
-
-        Returns:
-            pd.DataFrame: DataFrame with new binary columns attached.
+        Main orchestration method. Applies transformations to the dataframe.
         """
-        if text_col not in df.columns:
-            raise ValueError(f"Column '{text_col}' not found in DataFrame.")
-
-        logger.info(f"Starting feature extraction on {len(df)} records...")
-
-        # Working on a copy to avoid SettingWithCopy warnings
+        logger.info(f"Starting Feature Extraction on {len(df)} records...")
         df_out = df.copy()
 
-        # Pre-process text once for efficiency
-        search_space = self._normalize_text(df_out[text_col])
+        # --- FOREIGN KEY GENERATION (Critical for BigQuery) ---
+        if self.location_col in df_out.columns:
+            logger.info("Generating 'clean_address' Foreign Key...")
+            df_out['clean_address'] = df_out[self.location_col].apply(AddressCleaner.clean)
+        else:
+            logger.warning(f"Column '{self.location_col}' not found. Cannot generate Foreign Key.")
 
-        # Iterating through the dictionary of patterns
-        for feature, keywords in self.amenity_patterns.items():
-            # Create a single compiled regex pattern: (word1|word2|word3)
-            # This is significantly faster than looping through keywords.
-            regex_pattern = '|'.join(keywords)
+        # --- NLP AMENITY EXTRACTION ---
+        if self.text_col in df_out.columns:
+            logger.info("Extracting amenities from text descriptions...")
+            search_space = self._normalize_text(df_out[self.text_col])
 
-            # Vectorized search
-            df_out[feature] = search_space.str.contains(
-                regex_pattern, case=False, regex=True
-            ).astype(int)
+            for feature, keywords in self.amenity_patterns.items():
+                regex_pattern = '|'.join(keywords)
+                df_out[feature] = search_space.str.contains(
+                    regex_pattern, case=False, regex=True
+                ).astype(int)
 
-            count = df_out[feature].sum()
-            logger.info(f"  > Feature '{feature}': Detected in {count} listings ({count / len(df):.1%})")
+            # --- Business Logic Corrections (Post-Processing) ---
+            # Correcting "Service Patio" confusing the "Garden" logic
+            mask_service_patio = search_space.str.contains(r'patio de (servicio|lavado|tendido)', regex=True)
+            mask_strong_garden = search_space.str.contains(r'jard[ií]n|areas? verdeg?s?', regex=True)
 
-        # --- BUSINESS LOGIC CORRECTIONS ---
-        # Fix 1: "Patio de servicio" (Laundry area) is NOT a Garden.
-        # We check if 'has_garden' is 1, but the text explicitly mentions service patio.
+            # Logic: If Garden=1 BUT it's a Service Patio AND NOT a real Garden -> Set Garden=0
+            correction_mask = (df_out['has_garden'] == 1) & (mask_service_patio) & (~mask_strong_garden)
 
-        # Define mask for service patio
-        mask_service_patio = search_space.str.contains(r'patio de (servicio|lavado|tendido)', regex=True)
+            if correction_mask.sum() > 0:
+                df_out.loc[correction_mask, 'has_garden'] = 0
+                logger.info(f"  > Refined Logic: Removed 'Service Patio' false positives from {correction_mask.sum()} rows.")
+        else:
+            logger.warning(f"Column '{self.text_col}' not found. Skipping NLP extraction.")
 
-        # If it has garden AND matches service patio pattern, we need to be careful.
-        # We only remove it if it DOESN'T match strong garden keywords (like 'jardin' or 'areas verdes').
-        mask_strong_garden = search_space.str.contains(r'jard[ií]n|areas? verdeg?s?', regex=True)
-
-        # Logic: If it has "Patio" but also "Patio de servicio" and NO "Jardin", set to 0.
-        correction_mask = (df_out['has_garden'] == 1) & (mask_service_patio) & (~mask_strong_garden)
-
-        n_corrected = correction_mask.sum()
-        if n_corrected > 0:
-            df_out.loc[correction_mask, 'has_garden'] = 0
-            logger.info(f"  > Applied Logic Fix: Removed 'Patio de servicio' false positives from {n_corrected} rows.")
-
-        logger.info("Feature extraction completed successfully.")
         return df_out
 
 
-# --- EXECUTION BLOCK ---
+# --- EXECUTION ENTRY POINT ---
 if __name__ == "__main__":
-    # Define paths
-    BASE_DIR = Path(__file__).resolve().parent.parent.parent
     INPUT_FILE = BASE_DIR / "data" / "raw" / "real_estate_queretaro_dataset.csv"
     OUTPUT_FILE = BASE_DIR / "data" / "processed" / "real_estate_enriched.csv"
 
-    # Check if file exists
     if not INPUT_FILE.exists():
         logger.error(f"Input file not found: {INPUT_FILE}")
     else:
-        logger.info(f"Loading data from: {INPUT_FILE}")
+        logger.info(f"Loading raw data from: {INPUT_FILE}")
         df_raw = pd.read_csv(INPUT_FILE)
 
-        # Initialize and Transform
-        extractor = FeatureExtractor()
+        # Instantiate Extractor
+        extractor = FeatureExtractor(
+            text_col='description',
+            location_col='location_text'
+        )
+
         try:
+            # Run Pipeline
             df_processed = extractor.transform(df_raw)
 
-            # Save output
+            # Save Output
             os.makedirs(OUTPUT_FILE.parent, exist_ok=True)
             df_processed.to_csv(OUTPUT_FILE, index=False)
-            logger.info(f"Data saved to: {OUTPUT_FILE}")
+
+            logger.info("--- SUCCESS ---")
+            logger.info(f"Enriched dataset saved to: {OUTPUT_FILE}")
 
         except Exception as e:
-            logger.critical(f"Pipeline failed: {e}")
+            logger.critical(f"Feature Extraction Pipeline Failed: {e}")
+            raise e
