@@ -176,6 +176,6 @@ pyrightconfig.json
 # End of https://www.toptal.com/developers/gitignore/api/python
 
 # Ignore data
-data/raw/
-data/processed/
-data/external/
+data/raw/*
+data/processed/*
+data/external/*
