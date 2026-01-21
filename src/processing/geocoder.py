@@ -1,29 +1,41 @@
-import time
 import pandas as pd
+import time
+import logging
+import sys
+import os
+from pathlib import Path
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 from geopy.exc import GeocoderTimedOut, GeocoderUnavailable
 
-# Importamos tu clase de limpieza robusta
-from src.utils.clean_text import AddressCleaner
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(BASE_DIR))
+
+try:
+    from src.utils.clean_text import AddressCleaner
+except ImportError:
+    from clean_text import AddressCleaner
+
+# Configuración de Logs
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 class GeocoderService:
     """
     Handles interactions with the OpenStreetMap API (Nominatim).
     Includes logic for:
-    - Text cleaning (via AddressCleaner)
     - Rate limiting (to avoid bans)
     - Fallback strategies (handling private clusters like 'Zikura, Zibata')
     """
 
     def __init__(self, app_name="qro_real_estate_analyzer_v1"):
         # 1. Setup Client: Nominatim requires a unique user_agent
-        self.geolocator = Nominatim(user_agent=app_name)
+        self.geolocator = Nominatim(user_agent=app_name, timeout=10)
 
         # 2. Setup Rate Limiter: Crucial to prevent 429 Errors (Too Many Requests)
-        # We wait 1 second between requests to be polite to the free API.
-        self.geocode_api = RateLimiter(self.geolocator.geocode, min_delay_seconds=1.0)
+        # Nominatim asks for 1 second delay minimum.
+        self.geocode_api = RateLimiter(self.geolocator.geocode, min_delay_seconds=1.1)
 
         # 3. Context
         self.macro_context = ", Querétaro, México"
@@ -33,40 +45,38 @@ class GeocoderService:
         Internal helper to execute the safe API call.
         """
         try:
-            # We add context back to ensure we don't find "Jurica" in Spain or Colombia
+            # Add context to avoid finding "Jurica" in another country
             full_query = f"{query_string}{self.macro_context}"
             return self.geocode_api(full_query)
         except (GeocoderTimedOut, GeocoderUnavailable):
-            time.sleep(2)  # Wait a bit more if API is struggling
+            logger.warning(f"API Timeout on: {query_string}. Retrying...")
+            time.sleep(2)
             return None
         except Exception as e:
-            print(f"API Error on '{query_string}': {e}")
+            logger.error(f"API Error on '{query_string}': {e}")
             return None
 
-    def get_coordinates(self, raw_address):
+    def get_coordinates(self, clean_address):
         """
         Main logic: Tries to find coordinates implementing a Fallback Strategy.
-        Returns: (latitude, longitude) or (None, None)
+        Assumes 'clean_address' is ALREADY cleaned.
+        Returns: (latitude, longitude)
         """
-        # Step 1: Clean the text using your robust cleaner
-        clean_address = AddressCleaner.clean(raw_address)
-
-        if not clean_address:
+        if not clean_address or pd.isna(clean_address):
             return None, None
 
-        # Step 2: Primary Attempt (Exact Match)
+        # Step 1: Primary Attempt (Exact Match)
         location = self._query_api(clean_address)
 
-        # Step 3: Fallback Strategy (The fix for 'Meseta, Sonterra' or 'Zikura, Zibata')
+        # Step 2: Fallback Strategy
         # If exact match fails AND there is a comma, try searching for the parent neighborhood.
         if not location and ',' in clean_address:
             # Logic: Split "zikura, zibatá" -> take "zibatá"
-            # We assume the last part is the most recognized macro-location.
             parts = clean_address.split(',')
             if len(parts) > 1:
-                broader_address = parts[-1].strip()  # Take the part after the comma
-                if len(broader_address) > 3:  # Safety check
-                    # print(f"   ↳ Retrying with broader term: '{broader_address}'") # Debug
+                broader_address = parts[-1].strip()
+                if len(broader_address) > 3:
+                    # logger.info(f"   ↳ Retry broader: '{broader_address}'")
                     location = self._query_api(broader_address)
 
         if location:
@@ -77,39 +87,67 @@ class GeocoderService:
         """
         Applies geocoding to a DataFrame with progress tracking.
         """
-        print(f"Starting Geocoding for {len(df)} rows...")
-        print("   This process includes rate limiting (1s delay). Please wait.")
+        logger.info(f"Starting Geocoding for {len(df)} unique locations...")
+        logger.info("   This process includes rate limiting (1.1s delay). Please wait.")
 
-        # Create copies to avoid SettingWithCopy warnings
-        df = df.copy()
+        df_out = df.copy()
 
-        # Apply logic row by row
-        # Using a simple loop or apply. For large datasets, tqdm is recommended but optional.
-        results = df[address_col].apply(self.get_coordinates)
+        # Usamos un bucle simple para ver el progreso real en la consola
+        lats, lons = [], []
+        total = len(df_out)
 
-        # Unpack results into new columns
-        df['latitude'] = results.apply(lambda x: x[0] if x else None)
-        df['longitude'] = results.apply(lambda x: x[1] if x else None)
+        for i, idx, row in enumerate(df_out.iterrows()):
+            addr = row[address_col]
+            lat, lon = self.get_coordinates(addr)
+            lats.append(lat)
+            lons.append(lon)
 
-        success_rate = df['latitude'].notnull().mean()
-        print(f"Geocoding Complete. Success Rate: {success_rate:.1%}")
+            # Barra de progreso simple
+            if i % 5 == 0 or i == total - 1:
+                sys.stdout.write(f"\rProcessing: {i + 1}/{total} - Last: {addr[:20]}...")
+                sys.stdout.flush()
 
-        return df
+        print("\n")  # Nueva línea al terminar
+        df_out['latitude'] = lats
+        df_out['longitude'] = lons
+
+        success_rate = df_out['latitude'].notnull().mean()
+        logger.info(f"Geocoding Complete. Success Rate: {success_rate:.1%}")
+
+        return df_out
 
 
-# Entry point for testing the script directly
+# --- ENTRY POINT (EJECUCIÓN) ---
 if __name__ == "__main__":
-    # Test with the hard cases we identified earlier
-    test_data = [
-        "meseta, sonterra",  # Should work via Fallback (finding Sonterra)
-        "moderna con excelente jurica",  # Should work via Cleaning (finding Jurica)
-        "zikura, zibatá, el marqués"  # Should work via Fallback (finding Zibatá)
-    ]
+    INPUT_FILE = BASE_DIR / "data" / "raw" / "real_estate_queretaro_dataset.csv"
+    OUTPUT_FILE = BASE_DIR / "data" / "processed" / "geo_catalog.csv"
 
-    df_test = pd.DataFrame(test_data, columns=['location'])
+    if not INPUT_FILE.exists():
+        logger.error(f"Input file not found: {INPUT_FILE}")
+        logger.info("Please run the scraper (engine.py) first to generate data.")
+    else:
+        logger.info(f"Loading raw data from: {INPUT_FILE}")
+        df_raw = pd.read_csv(INPUT_FILE)
+        raw_col_name = 'location_text'
 
-    geocoder = GeocoderService()
-    df_result = geocoder.process_batch(df_test, 'location')
+        if raw_col_name in df_raw.columns:
+            # Apply AddressCleaner logic
+            df_raw['clean_address'] = df_raw[raw_col_name].apply(AddressCleaner.clean)
 
-    print("\n--- TEST RESULTS ---")
-    print(df_result[['location', 'latitude', 'longitude']])
+            # Create a unique list of addresses to minimize API calls
+            df_catalog = df_raw[['clean_address']].dropna().drop_duplicates()
+
+            logger.info(f"Optimization: Reduced {len(df_raw)} raw rows to {len(df_catalog)} unique locations.")
+
+            # GEOCODING EXECUTION
+            geocoder = GeocoderService()
+            # Pass the newly created 'clean_address' column
+            df_result = geocoder.process_batch(df_catalog, address_col='clean_address')
+
+            # EXPORT RESULTS
+            os.makedirs(OUTPUT_FILE.parent, exist_ok=True)
+            df_result.to_csv(OUTPUT_FILE, index=False)
+            logger.info(f"Geocoded catalog saved successfully to: {OUTPUT_FILE}")
+
+        else:
+            logger.critical(f"Column '{raw_col_name}' not found. Available columns: {list(df_raw.columns)}")
