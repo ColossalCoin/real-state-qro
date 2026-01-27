@@ -215,7 +215,7 @@ class RealEstateScraper:
                 "latitude": lat,
                 "longitude": lon,
                 "location_text": location_text,
-                "description": cleaned_description,  # <--- KEY ADDITION
+                "description": cleaned_description,
                 "url": url,
                 "extraction_date": datetime.now().isoformat()
             }
