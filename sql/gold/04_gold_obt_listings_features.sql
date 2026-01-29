@@ -21,25 +21,18 @@ WITH
 -------------------------------------------------------------------------- */
 crime_features AS (
   SELECT
-    -- 1. JOIN KEY NORMALIZATION
-    -- We strip accents and force uppercase to ensure a robust join with the map data later.
-    -- (e.g., "Querétaro" -> "QUERETARO")
-    UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(TRIM(
-        municipio_name
-        ), 'á', 'a'), 'é', 'e'), 'í', 'i'), 'ó', 'o'), 'ú', 'u')) AS municipality_key,
+    municipality_name,
 
-    -- 2. TOTAL CRIME VOLUME
-    COUNT(*) AS total_crimes_period,
+    -- TOTAL CRIME VOLUME
+    SUM(crime_rate) AS total_crimes_period,
 
-    -- 3. SPECIFIC CRIME FEATURES (Using Strict Equality as requested)
-    -- We assume the data source has clean names with accents.
-    -- We add TRIM() to handle any accidental leading/trailing whitespace.
-    COUNTIF(UPPER(TRIM(crime_type)) = 'ROBO A CASA HABITACIÓN') AS feat_crime_residential,
-    COUNTIF(UPPER(TRIM(crime_type)) = 'ROBO DE VEHÍCULO') AS feat_crime_vehicle,
-    COUNTIF(UPPER(TRIM(crime_type)) = 'ROBO A TRANSEÚNTE TOTAL') AS feat_crime_street,
-    COUNTIF(UPPER(TRIM(crime_type)) = 'HOMICIDIO DOLOSO') AS feat_crime_homicide,
-    COUNTIF(UPPER(TRIM(crime_type)) = 'LESIONES DOLOSAS') AS feat_crime_domestic,
-    COUNTIF(UPPER(TRIM(crime_type)) = 'NARCOMENUDEO') AS feat_crime_drug_dealing
+    -- SPECIFIC CRIME FEATURES
+    SUM(CASE WHEN crime_type = 'ROBO A CASA HABITACIÓN' THEN crime_rate ELSE 0 END) AS feat_crime_residential,
+    SUM(CASE WHEN crime_type = 'ROBO DE VEHÍCULO' THEN crime_rate ELSE 0 END) AS feat_crime_vehicle,
+    SUM(CASE WHEN crime_type = 'ROBO A TRANSEÚNTE TOTAL' THEN crime_rate ELSE 0 END) AS feat_crime_street,
+    SUM(CASE WHEN crime_type = 'HOMICIDIO DOLOSO' THEN crime_rate ELSE 0 END) AS feat_crime_homicide,
+    SUM(CASE WHEN crime_type = 'LESIONES DOLOSAS' THEN crime_rate ELSE 0 END) AS feat_crime_domestic,
+    SUM(CASE WHEN crime_type = 'NARCOMENUDEO' THEN crime_rate ELSE 0 END) AS feat_crime_drug_dealing
 
   FROM `real-estate-qro.queretaro_data_warehouse.fact_context_crime`
   GROUP BY 1
@@ -56,11 +49,6 @@ listings_spatially_mapped AS (
 
     -- Extract the official Municipality Name from the Map Layer (dim_geo_grid_polygons)
     poly.municipality_name AS official_municipality_name,
-
-    -- Generate the Join Key (Normalized)
-    -- Must match the logic used in 'crime_features' CTE (Uppercase + No Accents)
-    UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-        poly.municipality_name, 'á', 'a'), 'é', 'e'), 'í', 'i'), 'ó', 'o'), 'ú', 'u')) AS join_key_municipality
 
   FROM `real-estate-qro.queretaro_data_warehouse.fact_listings_cleaned` l
 
@@ -97,7 +85,7 @@ SELECT
   l.has_terrace AS feat_has_terrace,
 
   -- 4. GEOGRAPHIC CONTEXT (Derived from Spatial Join)
-  l.official_municipality AS feat_municipality,
+  l.municipality_join_key AS feat_municipality,
   l.official_neighborhood_name AS feat_neighborhood,
 
   -- 5. SAFETY CONTEXT (Derived from Crime Join)
@@ -115,4 +103,4 @@ FROM listings_spatially_mapped l
 
 -- LEFT JOIN: We keep the house even if crime data is missing
 LEFT JOIN crime_features c
-  ON l.join_key_municipality = c.municipality_key;
+  ON l.official_municipality_name = c.municipality_name;
