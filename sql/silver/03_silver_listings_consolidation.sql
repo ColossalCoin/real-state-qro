@@ -82,7 +82,10 @@ SELECT
   n.neighborhood_point AS listing_geom,
 
   g.grid_id,
-  g.municipality_name AS official_municipality,
+  UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(TRIM(
+    g.municipality_name
+    ), 'Á', 'A'), 'É', 'E'), 'Í', 'I'), 'Ó', 'O'), 'Ú', 'U'), 'Ñ', 'N')
+  ) AS municipality_join_key,
   
   l.processed_date
 
