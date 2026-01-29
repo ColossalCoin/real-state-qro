@@ -93,7 +93,7 @@ INNER JOIN deduplicated_neighborhoods n
 
 -- JOIN 2: Spatial Grid
 INNER JOIN `real-estate-qro.queretaro_data_warehouse.dim_geo_grid_polygons` g
-  ON ST_CONTAINS(g.grid_geom, n.neighborhood_point)
+  ON ST_CONTAINS(g.polygon_geom, n.neighborhood_point)
 
 -- FINAL SAFETY NET (Optional but recommended)
 -- Just in case a point falls on a Grid border line
