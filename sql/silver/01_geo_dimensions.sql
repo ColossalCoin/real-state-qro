@@ -30,7 +30,10 @@ SELECT
   ST_GEOGFROMGEOJSON(JSON_QUERY(geo_raw, '$.geometry'), make_valid => true) AS polygon_geom,
 
   -- Municipality Name Extraction
-  UPPER(TRIM(JSON_VALUE(geo_raw, '$.properties.NAME_2'))) AS municipality_name
+  REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(TRIM(UPPER(
+    JSON_VALUE(geo_raw, '$.properties.NAME_2'))),
+    'Á', 'A'), 'É', 'E'), 'Í', 'I'), 'Ó', 'O'), 'Ú', 'U'), 'Ñ', 'N'
+    ) AS municipality_name
 
 FROM `real-estate-qro.queretaro_staging.geo_grid_mosaics`
 WHERE geo_raw IS NOT NULL;
