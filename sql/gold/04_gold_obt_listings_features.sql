@@ -25,7 +25,8 @@ crime_features AS (
     -- We strip accents and force uppercase to ensure a robust join with the map data later.
     -- (e.g., "Querétaro" -> "QUERETARO")
     UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(TRIM(
-        municipio_name), 'á', 'a'), 'é', 'e'), 'í', 'i'), 'ó', 'o'), 'ú', 'u')) AS municipality_key,
+        municipio_name
+        ), 'á', 'a'), 'é', 'e'), 'í', 'i'), 'ó', 'o'), 'ú', 'u')) AS municipality_key,
 
     -- 2. TOTAL CRIME VOLUME
     COUNT(*) AS total_crimes_period,
