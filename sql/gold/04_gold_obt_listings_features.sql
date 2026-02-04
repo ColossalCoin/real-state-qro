@@ -31,7 +31,7 @@ crime_features AS (
     SUM(CASE WHEN crime_type = 'ROBO DE VEHÍCULO' THEN crime_rate ELSE 0 END) AS feat_crime_vehicle,
     SUM(CASE WHEN crime_type = 'ROBO A TRANSEÚNTE TOTAL' THEN crime_rate ELSE 0 END) AS feat_crime_street,
     SUM(CASE WHEN crime_type = 'HOMICIDIO DOLOSO' THEN crime_rate ELSE 0 END) AS feat_crime_homicide,
-    SUM(CASE WHEN crime_type = 'LESIONES DOLOSAS' THEN crime_rate ELSE 0 END) AS feat_crime_domestic,
+    SUM(CASE WHEN crime_type = 'LESIONES DOLOSAS' THEN crime_rate ELSE 0 END) AS feat_crime_injuries,
     SUM(CASE WHEN crime_type = 'NARCOMENUDEO' THEN crime_rate ELSE 0 END) AS feat_crime_drug_dealing
 
   FROM `real-estate-qro.queretaro_data_warehouse.fact_context_crime`
