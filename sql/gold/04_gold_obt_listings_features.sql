@@ -10,7 +10,7 @@
      3. MERGE: Combine physical house features with the calculated environmental context.
 ========================================================================== */
 
-CREATE OR REPLACE TABLE `real-estate-qro.obt_listing_features.obt_listings_valuation_features` AS
+CREATE OR REPLACE TABLE `real-estate-qro.queretaro_data_marts.obt_listings_valuation_features` AS
 
 WITH
 
@@ -36,7 +36,24 @@ crime_features AS (
 ),
 
 /* --------------------------------------------------------------------------
-   CTE 2: SPATIAL MAPPING (The "Point-in-Polygon" Step)
+   CTE 2: GEO-AMENITIES (DISTANCES)  <--- ¡NUEVO BLOQUE! 🌍
+   Goal: Retrieve pre-calculated distances to schools, parks, etc.
+   Source: The Intermediate table we created in the previous step.
+-------------------------------------------------------------------------- */
+geo_amenities AS (
+  SELECT
+    amenity_id,
+    dist_school,
+    dist_university,
+    dist_hospital,
+    dist_mall,
+    dist_park,
+    dist_industrial
+  FROM `real-estate-qro.queretaro_data_warehouse.int_geo_features_distances`
+),
+
+/* --------------------------------------------------------------------------
+   CTE 3: SPATIAL MAPPING (The "Point-in-Polygon" Step)
    Goal: Identify the official municipality for every listing.
    Logic: Use BigQuery GIS functions to check which polygon contains the house.
 -------------------------------------------------------------------------- */
@@ -85,7 +102,16 @@ SELECT
   l.municipality_join_key AS feat_municipality,
   l.official_neighborhood_name AS feat_neighborhood,
 
-  -- 5. SAFETY CONTEXT (Derived from Crime Join)
+  -- 5. SPATIAL AMENITIES (Distances) <--- ¡NUEVAS COLUMNAS! 📏
+  -- Usamos COALESCE por seguridad, aunque la tabla int_ ya debería venir limpia.
+  COALESCE(g.dist_school, 5000) AS feat_dist_school,
+  COALESCE(g.dist_university, 5000) AS feat_dist_university,
+  COALESCE(g.dist_hospital, 5000) AS feat_dist_hospital,
+  COALESCE(g.dist_mall, 5000) AS feat_dist_mall,
+  COALESCE(g.dist_park, 5000) AS feat_dist_park,
+  COALESCE(g.dist_industrial, 5000) AS feat_dist_industrial,
+
+  -- 6. SAFETY CONTEXT (Derived from Crime Join)
   -- We use COALESCE(x, 0) because if a municipality has NO crime records,
   -- the Join returns NULL. We treat this as 0 crimes (safest).
   COALESCE(c.feat_crime_residential, 0) AS feat_crime_residential,
@@ -93,10 +119,17 @@ SELECT
   COALESCE(c.feat_crime_street, 0) AS feat_crime_street,
   COALESCE(c.feat_crime_homicide, 0) AS feat_crime_homicide,
   COALESCE(c.feat_crime_injuries, 0) AS feat_crime_injueries,
-  COALESCE(c.feat_crime_drug_dealing, 0) AS feat_crime_drug_dealing
+  COALESCE(c.feat_crime_drug_dealing, 0) AS feat_crime_drug_dealing,
+
+  -- 7. Metadata
+  CURRENT_TIMESTAMP() AS obt_created_at
 
 FROM listings_spatially_mapped l
 
--- LEFT JOIN: We keep the house even if crime data is missing
+-- JOIN 1: CRIME (Left Join en caso de que no haya crimen registrado)
 LEFT JOIN crime_features c
-  ON l.official_municipality_name = c.municipality_name;
+  ON l.official_municipality_name = c.municipality_name
+
+-- JOIN 2: GEO AMENITIES (Left Join usando ID de listing)
+LEFT JOIN geo_amenities g
+  ON l.listing_id = g.amenity_id;
