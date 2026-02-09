@@ -16,7 +16,7 @@ WITH stats AS (
     ROUND(STDDEV(target_price), 2) as std_dev,
     ROUND(APPROX_QUANTILES(target_price, 100)[OFFSET(50)], 2) as median, -- P50
     ROUND(MAX(target_price), 2) as max_val
-  FROM `real-estate-qro.obt_listing_features.obt_listings_valuation_features`
+  FROM `real-estate-qro.queretaro_data_marts.obt_listings_valuation_features`
 
   UNION ALL
 
@@ -31,7 +31,7 @@ WITH stats AS (
     ROUND(STDDEV(feat_m2_constructed), 2),
     ROUND(APPROX_QUANTILES(feat_m2_constructed, 100)[OFFSET(50)], 2),
     ROUND(MAX(feat_m2_constructed), 2)
-  FROM `real-estate-qro.obt_listing_features.obt_listings_valuation_features`
+  FROM `real-estate-qro.queretaro_data_marts.obt_listings_valuation_features`
 
   UNION ALL
 
@@ -46,7 +46,7 @@ WITH stats AS (
     ROUND(STDDEV(feat_m2_terrain), 2),
     ROUND(APPROX_QUANTILES(feat_m2_terrain, 100)[OFFSET(50)], 2),
     ROUND(MAX(feat_m2_terrain), 2)
-  FROM `real-estate-qro.obt_listing_features.obt_listings_valuation_features`
+  FROM `real-estate-qro.queretaro_data_marts.obt_listings_valuation_features`
 
   UNION ALL
 
@@ -61,7 +61,7 @@ WITH stats AS (
     ROUND(STDDEV(feat_bedrooms), 1),
     APPROX_QUANTILES(feat_bedrooms, 100)[OFFSET(50)],
     MAX(feat_bedrooms)
-  FROM `real-estate-qro.obt_listing_features.obt_listings_valuation_features`
+  FROM `real-estate-qro.queretaro_data_marts.obt_listings_valuation_features`
 
   UNION ALL
 
@@ -76,7 +76,7 @@ WITH stats AS (
     ROUND(STDDEV(feat_bathrooms), 1),
     APPROX_QUANTILES(feat_bathrooms, 100)[OFFSET(50)],
     MAX(feat_bathrooms)
-  FROM `real-estate-qro.obt_listing_features.obt_listings_valuation_features`
+  FROM `real-estate-qro.queretaro_data_marts.obt_listings_valuation_features`
 )
 
 SELECT

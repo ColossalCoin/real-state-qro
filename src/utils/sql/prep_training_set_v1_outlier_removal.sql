@@ -36,7 +36,7 @@ SELECT
   -- CRIME CONTEXT
   feat_crime_residential
 
-FROM `real-estate-qro.obt_listing_features.obt_listings_valuation_features`
+FROM `real-estate-qro.queretaro_data_marts.obt_listings_valuation_features`
 
 WHERE
   -- 1. PRICE FILTER (Reasonable range for housing market)
