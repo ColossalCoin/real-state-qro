@@ -4,7 +4,7 @@
    Note: Log transformation is NOT applied here to allow for "Raw" scenario testing.
    ========================================================================== */
 
-CREATE OR REPLACE VIEW `real-estate-qro.queretaro_data_marts.view_training_data_cleaned` AS
+CREATE OR REPLACE VIEW `real-estate-qro.obt_listing_features.view_training_data_cleaned` AS
 
 SELECT
   listing_id,
@@ -34,10 +34,9 @@ SELECT
   feat_neighborhood,
 
   -- CRIME CONTEXT
-  feat_crime_total,
   feat_crime_residential
 
-FROM `real-estate-qro.queretaro_data_marts.obt_listings_valuation_features`
+FROM `real-estate-qro.obt_listing_features.obt_listings_valuation_features`
 
 WHERE
   -- 1. PRICE FILTER (Reasonable range for housing market)
