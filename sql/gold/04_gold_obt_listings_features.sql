@@ -36,7 +36,7 @@ crime_features AS (
 ),
 
 /* --------------------------------------------------------------------------
-   CTE 2: GEO-AMENITIES (DISTANCES)  <--- ¡NUEVO BLOQUE! 🌍
+   CTE 2: GEO-AMENITIES (DISTANCES)
    Goal: Retrieve pre-calculated distances to schools, parks, etc.
    Source: The Intermediate table we created in the previous step.
 -------------------------------------------------------------------------- */
@@ -48,7 +48,15 @@ geo_amenities AS (
     dist_hospital,
     dist_mall,
     dist_park,
-    dist_industrial
+    dist_industrial,
+    dist_green_area,
+    dist_playground,
+    dist_service,
+    dist_convenience,
+    dist_market,
+    dist_supermarket,
+    dist_center,
+    dist_tourism
   FROM `real-estate-qro.queretaro_data_warehouse.int_geo_features_distances`
 ),
 
@@ -102,14 +110,21 @@ SELECT
   l.municipality_join_key AS feat_municipality,
   l.official_neighborhood_name AS feat_neighborhood,
 
-  -- 5. SPATIAL AMENITIES (Distances) <--- ¡NUEVAS COLUMNAS! 📏
-  -- Usamos COALESCE por seguridad, aunque la tabla int_ ya debería venir limpia.
+  -- 5. SPATIAL AMENITIES (Distances)
   COALESCE(g.dist_school, 5000) AS feat_dist_school,
   COALESCE(g.dist_university, 5000) AS feat_dist_university,
   COALESCE(g.dist_hospital, 5000) AS feat_dist_hospital,
   COALESCE(g.dist_mall, 5000) AS feat_dist_mall,
   COALESCE(g.dist_park, 5000) AS feat_dist_park,
   COALESCE(g.dist_industrial, 5000) AS feat_dist_industrial,
+  COALESCE(g.dist_green_area, 5000) AS feat_dist_green_area,
+  COALESCE(g.dist_playground, 5000) AS feat_dist_playground,
+  COALESCE(g.dist_service, 5000) AS feat_dist_service,
+  COALESCE(g.dist_convenience, 5000) AS feat_dist_convenience,
+  COALESCE(g.dist_market, 5000) AS feat_dist_market,
+  COALESCE(g.dist_supermarket, 5000) AS feat_dist_supermarket,
+  COALESCE(g.dist_center, 5000) AS feat_dist_center,
+  COALESCE(g.dist_tourism, 5000) AS feat_dist_tourism,
 
   -- 6. SAFETY CONTEXT (Derived from Crime Join)
   -- We use COALESCE(x, 0) because if a municipality has NO crime records,
@@ -126,10 +141,10 @@ SELECT
 
 FROM listings_spatially_mapped l
 
--- JOIN 1: CRIME (Left Join en caso de que no haya crimen registrado)
+-- JOIN 1: CRIME
 LEFT JOIN crime_features c
   ON l.official_municipality_name = c.municipality_name
 
--- JOIN 2: GEO AMENITIES (Left Join usando ID de listing)
+-- JOIN 2: GEO AMENITIES
 LEFT JOIN geo_amenities g
   ON l.listing_id = g.listing_id;

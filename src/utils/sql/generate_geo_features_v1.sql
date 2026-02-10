@@ -91,6 +91,13 @@ SELECT
 
     -- Services
     COALESCE(MAX(CASE WHEN type = 'other_service' THEN min_distance END), 5000) AS dist_service,
+    COALESCE(MAX(CASE WHEN type = 'shop_convenience' THEN min_distance END), 5000) AS dist_convenience,
+    COALESCE(MAX(CASE WHEN type = 'shop_market' THEN min_distance END), 5000) AS dist_market,
+    COALESCE(MAX(CASE WHEN type = 'shop_supermarket' THEN min_distance END), 5000) AS dist_supermarket,
+
+    -- Tourism
+    COALESCE(MAX(CASE WHEN type = 'municipal_center' THEN min_distance END), 5000) AS dist_center,
+    COALESCE(MAX(CASE WHEN type = 'hub_tourism' THEN min_distance END), 5000) AS dist_tourism,
 
     -- Metadata
     CURRENT_TIMESTAMP() as created_at
