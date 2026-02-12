@@ -92,11 +92,11 @@ SELECT
   l.price_mxn AS target_price,
 
   -- 2. PHYSICAL PROPERTY FEATURES
-  l.m2_constructed AS feat_m2_constructed,
-  l.m2_terrain AS feat_m2_terrain,
-  l.bedrooms AS feat_bedrooms,
-  l.bathrooms AS feat_bathrooms,
-  l.parking_spots AS feat_parking_spots,
+  COALESCE(l.m2_constructed, 0) AS feat_m2_constructed,
+  COALESCE(l.m2_terrain, 0) AS feat_m2_terrain,
+  COALESCE(l.bedrooms, 0) AS feat_bedrooms,
+  COALESCE(l.bathrooms, 0) AS feat_bathrooms,
+  COALESCE(l.parking_spots, 0) AS feat_parking_spots,
   l.is_new_property AS feat_is_new,
 
   -- 3. AMENITIES (Boolean Flags)
