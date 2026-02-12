@@ -30,7 +30,13 @@ OPTIONS(
 
   -- DATA SPLIT: BigQuery automatically handles Train/Test split
   -- It reserves ~10-20% of data to evaluate quality later.
-  data_split_method = 'AUTO_SPLIT'
+  data_split_method = 'AUTO_SPLIT',
+
+  -- Calculate p-value for further analysis
+  calculate_p_values = TRUE,
+
+  -- BigQuery requires specifying Dummy Encoding to enable p-values
+  category_encoding_method = 'DUMMY_ENCODING'
 ) AS
 
 SELECT
@@ -56,7 +62,9 @@ OPTIONS(
   -- TARGET: We predict LN(Price)
   input_label_cols = ['ln_price'],
 
-  data_split_method = 'AUTO_SPLIT'
+  data_split_method = 'AUTO_SPLIT',
+  calculate_p_values = TRUE,
+  category_encoding_method = 'DUMMY_ENCODING'
 ) AS
 
 SELECT
