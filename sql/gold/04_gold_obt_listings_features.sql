@@ -26,10 +26,11 @@ crime_features AS (
     -- SPECIFIC CRIME FEATURES
     SUM(CASE WHEN crime_id = 4200 THEN crime_rate ELSE 0 END) AS feat_crime_residential,
     SUM(CASE WHEN crime_id = 4100 THEN crime_rate ELSE 0 END) AS feat_crime_vehicle,
-    SUM(CASE WHEN crime_id = 4400 THEN crime_rate ELSE 0 END) AS feat_crime_street,
+    SUM(CASE WHEN crime_id = 4400 THEN crime_rate ELSE 0 END) AS feat_crime_passerby,
     SUM(CASE WHEN crime_id = 1100 THEN crime_rate ELSE 0 END) AS feat_crime_homicide,
     SUM(CASE WHEN crime_id = 9000 THEN crime_rate ELSE 0 END) AS feat_crime_injuries,
-    SUM(CASE WHEN crime_id = 8000 THEN crime_rate ELSE 0 END) AS feat_crime_drug_dealing
+    SUM(CASE WHEN crime_id = 8000 THEN crime_rate ELSE 0 END) AS feat_crime_drug_dealing,
+    SUM(CASE WHEN crime_id = 4001 THEN crime_rate ELSE 0 END) AS feat_crime_violent
 
   FROM `real-estate-qro.queretaro_data_warehouse.fact_context_crime`
   GROUP BY 1
@@ -131,10 +132,11 @@ SELECT
   -- the Join returns NULL. We treat this as 0 crimes (safest).
   COALESCE(c.feat_crime_residential, 0) AS feat_crime_residential,
   COALESCE(c.feat_crime_vehicle, 0) AS feat_crime_vehicle,
-  COALESCE(c.feat_crime_street, 0) AS feat_crime_street,
+  COALESCE(c.feat_crime_passerby, 0) AS feat_crime_street,
   COALESCE(c.feat_crime_homicide, 0) AS feat_crime_homicide,
   COALESCE(c.feat_crime_injuries, 0) AS feat_crime_injueries,
   COALESCE(c.feat_crime_drug_dealing, 0) AS feat_crime_drug_dealing,
+  COALESCE(c.feat_crime_violent, 0) AS feat_crime_violent,
 
   -- 7. Metadata
   CURRENT_TIMESTAMP() AS obt_created_at
